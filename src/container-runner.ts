@@ -125,28 +125,42 @@ function buildVolumeMounts(
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(
-      settingsFile,
-      JSON.stringify(
-        {
-          env: {
-            // Enable agent swarms (subagent orchestration)
-            // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
-            CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-            // Load CLAUDE.md from additional mounted directories
-            // https://code.claude.com/docs/en/memory#load-memory-from-additional-directories
-            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-            // Enable Claude's memory feature (persists user preferences between sessions)
-            // https://code.claude.com/docs/en/memory#manage-auto-memory
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-          },
-        },
-        null,
-        2,
-      ) + '\n',
-    );
+  // Read existing settings (if any) so agent customizations are preserved
+  let settings: Record<string, unknown> = {};
+  if (fs.existsSync(settingsFile)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
+    } catch { /* ignore parse errors, start fresh */ }
   }
+  const existingEnv = (settings.env as Record<string, string> | undefined) ?? {};
+  // Remove legacy Foundry flags that trigger Azure AD auth — we use standard SDK vars instead
+  delete existingEnv.CLAUDE_CODE_USE_FOUNDRY;
+  delete existingEnv.ANTHROPIC_FOUNDRY_BASE_URL;
+  // Foundry vars from host environment — always override so config changes take effect.
+  // Map ANTHROPIC_FOUNDRY_* → standard SDK vars so the container uses API key auth
+  // instead of triggering the Azure AD flow that CLAUDE_CODE_USE_FOUNDRY causes.
+  const foundryEnv: Record<string, string> = {};
+  if (process.env.ANTHROPIC_FOUNDRY_BASE_URL) {
+    foundryEnv.ANTHROPIC_BASE_URL = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
+  }
+  if (process.env.ANTHROPIC_FOUNDRY_API_KEY) {
+    foundryEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_FOUNDRY_API_KEY;
+  }
+  if (process.env.ANTHROPIC_CUSTOM_HEADERS) foundryEnv.ANTHROPIC_CUSTOM_HEADERS = process.env.ANTHROPIC_CUSTOM_HEADERS;
+  if (process.env.NODE_EXTRA_CA_CERTS) {
+    // Cert is mounted at /home/node/.claude-certs/ inside the container
+    const certFile = path.basename(process.env.NODE_EXTRA_CA_CERTS);
+    foundryEnv.NODE_EXTRA_CA_CERTS = `/home/node/.claude-certs/${certFile}`;
+  }
+  settings.env = {
+    ...existingEnv,
+    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: existingEnv.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS ?? '1',
+    CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: existingEnv.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD ?? '1',
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: existingEnv.CLAUDE_CODE_DISABLE_AUTO_MEMORY ?? '0',
+    // Foundry vars always win
+    ...foundryEnv,
+  };
+  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + '\n');
 
   // Sync skills from container/skills/ into each group's .claude/skills/
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
@@ -164,6 +178,18 @@ function buildVolumeMounts(
     containerPath: '/home/node/.claude',
     readonly: false,
   });
+
+  // Mount cert directory for Foundry TLS if NODE_EXTRA_CA_CERTS is set
+  if (process.env.NODE_EXTRA_CA_CERTS) {
+    const certDir = path.dirname(process.env.NODE_EXTRA_CA_CERTS);
+    if (fs.existsSync(certDir)) {
+      mounts.push({
+        hostPath: certDir,
+        containerPath: '/home/node/.claude-certs',
+        readonly: true,
+      });
+    }
+  }
 
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC
