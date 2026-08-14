@@ -18,11 +18,31 @@ import { readEnvFile } from '../env.js';
 import { registerProviderContainerConfig } from './provider-container-registry.js';
 
 registerProviderContainerConfig('claude', () => {
-  const dotenv = readEnvFile(['ANTHROPIC_BASE_URL']);
+  const dotenv = readEnvFile([
+    'ANTHROPIC_BASE_URL',
+    'ANTHROPIC_CUSTOM_HEADERS',
+    'ANTHROPIC_FOUNDRY_API_KEY',
+    'ANTHROPIC_FOUNDRY_BASE_URL',
+    'CLAUDE_CODE_USE_FOUNDRY',
+  ]);
   const env: Record<string, string> = {};
   if (dotenv.ANTHROPIC_BASE_URL) {
     env.ANTHROPIC_BASE_URL = dotenv.ANTHROPIC_BASE_URL;
     env.ANTHROPIC_AUTH_TOKEN = 'placeholder';
+  }
+  if (dotenv.ANTHROPIC_CUSTOM_HEADERS) {
+    env.ANTHROPIC_CUSTOM_HEADERS = dotenv.ANTHROPIC_CUSTOM_HEADERS;
+  }
+  if (dotenv.ANTHROPIC_FOUNDRY_API_KEY) {
+    env.ANTHROPIC_FOUNDRY_API_KEY = dotenv.ANTHROPIC_FOUNDRY_API_KEY;
+  }
+  if (dotenv.ANTHROPIC_FOUNDRY_BASE_URL) {
+    env.ANTHROPIC_FOUNDRY_BASE_URL = dotenv.ANTHROPIC_FOUNDRY_BASE_URL;
+    // Bypass OneCLI proxy for direct Foundry gateway connections.
+    env.NO_PROXY = new URL(dotenv.ANTHROPIC_FOUNDRY_BASE_URL).hostname;
+  }
+  if (dotenv.CLAUDE_CODE_USE_FOUNDRY) {
+    env.CLAUDE_CODE_USE_FOUNDRY = dotenv.CLAUDE_CODE_USE_FOUNDRY;
   }
   return { env };
 });
