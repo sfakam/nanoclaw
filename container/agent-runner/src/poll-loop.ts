@@ -7,7 +7,7 @@ import {
   type MessageInRow,
 } from './db/messages-in.js';
 import { writeMessageOut } from './db/messages-out.js';
-import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
+import { getInboundDb, getOutboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import {
   clearContinuation,
   clearCurrentInReplyTo,
@@ -351,6 +351,9 @@ export async function processQuery(
   let queryContinuation: string | undefined;
   let done = false;
   let unwrappedNudged = false;
+  // Capture seq watermark so dispatchResultText can skip <message> blocks
+  // whose content was already sent via the send_message MCP tool this turn.
+  const turnStartSeq = (getOutboundDb().prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM messages_out').get() as { s: number }).s;
   // Once-per-turn guard for the task-run "<message> block was not delivered"
   // nudge — mirrors unwrappedNudged for chat turns.
   let taskBlockNudged = false;
@@ -505,7 +508,7 @@ export async function processQuery(
         // at all — either way the turn is finished.
         markCompleted(initialBatchIds);
         if (event.text) {
-          const { sent, hasUnwrapped, taskBlocks } = dispatchResultText(event.text, routing);
+          const { sent, hasUnwrapped, taskBlocks } = dispatchResultText(event.text, routing, turnStartSeq);
           const willRetryTaskBlocks = shouldNudgeTaskBlocks(routing.taskRun, taskBlocks, taskBlockNudged);
           // One-door task delivery: the final text becomes the run log entry
           // while explicit append-log calls remain optional additive notes.
@@ -644,6 +647,7 @@ export interface TaskMessageBlock {
 export function dispatchResultText(
   text: string,
   routing: RoutingContext,
+  turnStartSeq = 0,
 ): { sent: number; hasUnwrapped: boolean; taskBlocks: TaskMessageBlock[] } {
   const MESSAGE_RE = /<message\s+to="([^"]+)"\s*>([\s\S]*?)<\/message>/g;
 
@@ -680,6 +684,26 @@ export function dispatchResultText(
       log(`Unknown destination in <message to="${toName}">, dropping block`);
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
       continue;
+    }
+    // Dedup guard: if the agent already sent this exact content to this
+    // destination via send_message mid-turn, the final <message> block is a
+    // redundant echo. Skip the write but count as sent so no nudge fires.
+    // Only checked for interactive (non-task) sessions — task runs already
+    // gate on their own one-door rule above.
+    if (!routing.taskRun && turnStartSeq >= 0) {
+      const platformId = dest.type === 'channel' ? dest.platformId! : dest.agentGroupId!;
+      const contentJson = JSON.stringify({ text: body });
+      const alreadySent = getOutboundDb()
+        .prepare(
+          "SELECT 1 FROM messages_out WHERE seq > ? AND platform_id = ? AND kind = 'chat' AND content = ?",
+        )
+        .get(turnStartSeq, platformId, contentJson);
+      if (alreadySent) {
+        log(`Skipping duplicate <message to="${toName}"> — same content already sent via send_message this turn`);
+        scratchpadParts.push(`[not re-sent — already delivered via send_message this turn; to="${toName}"] ${body}`);
+        sent++;
+        continue;
+      }
     }
     sendToDestination(dest, body, routing);
     sent++;
