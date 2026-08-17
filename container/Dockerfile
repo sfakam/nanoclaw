@@ -10,6 +10,10 @@
 # bind mount at runtime (see src/container-runner.ts). Source-only changes
 # never require an image rebuild.
 
+# Global ARGs must appear before the first FROM to be usable in FROM/COPY --from.
+ARG UV_VERSION=0.7.19
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-bin
+
 FROM node:22-slim
 
 # ---- Build-time arguments ----------------------------------------------------
@@ -48,6 +52,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ca-certificates \
         curl \
         git \
+        python3 \
+        python3-pip \
+        python3-venv \
         tini \
         unzip \
     && if [ "$INSTALL_CJK_FONTS" = "true" ]; then \
@@ -68,6 +75,34 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" && \
     install -m 0755 /root/.bun/bin/bun /usr/local/bin/bun && \
     rm -rf /root/.bun
+
+# ---- Python + uv (for marketplace plugin scripts) ----------------------------
+# uv is the package manager used by the marketplace. Agents can call:
+#   uv run --directory /marketplace/<plugin>/servers/<mcp> python3 script.py
+# which resolves deps from the project's pyproject.toml on first run (cached).
+# Common deps are also pre-installed system-wide for zero-latency bare invocations.
+COPY --from=uv-bin /uv /usr/local/bin/uv
+
+# Create a shared venv for marketplace Python scripts. Debian's PEP 668 marks
+# the system Python as "externally managed", blocking --system installs even in
+# Docker. A dedicated venv at /opt/marketplace-pyenv avoids that restriction.
+# Putting it on PATH makes `python3 /marketplace/...` work without any prefix.
+ENV VIRTUAL_ENV=/opt/marketplace-pyenv
+RUN uv venv $VIRTUAL_ENV && \
+    uv pip install --python $VIRTUAL_ENV --no-cache \
+        "mcp>=1.2.0" \
+        "httpx>=0.27.0" \
+        "markdown>=3.0.0" \
+        "pydantic>=2.0.0" \
+        "pydantic-settings>=2.0.0" \
+        "jinja2>=3.1.6"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Redirect uv project envs to the persistent agent workspace so they survive
+# container restarts. /workspace/agent is the host-backed group dir (RW mount),
+# so the venv is created once and reused — not rebuilt on every container start.
+# Without this, uv would try to create .venv inside the RO marketplace mount.
+ENV UV_PROJECT_ENVIRONMENT=/workspace/agent/.uv-envs
 
 # ---- agent-runner deps -------------------------------------------------------
 # Deps are cached independently of CLI versions. Source is NOT baked in —

@@ -374,6 +374,14 @@ export function buildMounts(
     mounts.push({ hostPath: skillsSrc, containerPath: '/app/skills', readonly: true });
   }
 
+  // Plugin marketplace — mounted when present so agents can run Python scripts
+  // directly (e.g. python3 /marketplace/sdlc/.../scripts/jira_report.py).
+  // Populated by: pnpm exec tsx scripts/setup-marketplace.ts
+  const marketplaceDir = path.join(projectRoot, 'plugins', 'marketplace');
+  if (fs.existsSync(marketplaceDir)) {
+    mounts.push({ hostPath: marketplaceDir, containerPath: '/marketplace', readonly: true });
+  }
+
   // Additional mounts from container config
   if (containerConfig.additionalMounts && containerConfig.additionalMounts.length > 0) {
     const validated = validateAdditionalMounts(containerConfig.additionalMounts, agentGroup.name);
