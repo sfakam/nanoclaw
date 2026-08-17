@@ -180,8 +180,10 @@ function syncMarketplace(repoUrl: string): void {
  */
 function rewritePluginPaths(content: string, pluginRelDir: string): string {
   const containerRoot = `/marketplace/${pluginRelDir}`;
-  // Cross-plugin: $CLAUDE_PLUGIN_ROOT/../sibling → /marketplace/sibling
-  content = content.replace(/\$CLAUDE_PLUGIN_ROOT\/\.\.\//g, '/marketplace/');
+  // Parent dir — for resolving $CLAUDE_PLUGIN_ROOT/../sibling cross-plugin refs
+  const containerParent = path.posix.dirname(containerRoot);
+  // Cross-plugin: $CLAUDE_PLUGIN_ROOT/../sibling → /marketplace/plugins/sibling
+  content = content.replace(/\$CLAUDE_PLUGIN_ROOT\/\.\.\//g, `${containerParent}/`);
   // Python os.environ lookup
   content = content.replace(/os\.environ\["CLAUDE_PLUGIN_ROOT"\]/g, `"${containerRoot}"`);
   // All remaining bare $CLAUDE_PLUGIN_ROOT
@@ -212,7 +214,7 @@ function installPluginSkills(pluginDir: string, pluginName: string, pluginRelDir
     const note = `<!-- Installed from marketplace plugin: ${pluginName}/${entry.name} -->\n` +
       `<!-- MCP tools are available via the nanoclaw-plugins MCP server. -->\n` +
       `<!-- If a tool is shown as mcp__<server>__<tool>, use mcp__nanoclaw-plugins__<tool> instead. -->\n` +
-      `<!-- Marketplace scripts are available at /marketplace/${pluginRelDir}/ -->\n\n`;
+      `<!-- Marketplace scripts are available at /marketplace/${pluginRelDir}/ (e.g. scripts/, skills/, servers/) -->\n\n`;
     content = note + content;
 
     fs.writeFileSync(destMd, content);

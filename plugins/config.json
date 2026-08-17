@@ -7,19 +7,82 @@
     "plugins": [
       {
         "name": "platform-common",
-        "dir": "platform-common",
+        "dir": "plugins/platform-common",
         "installMcpServers": true,
         "installSkills": true,
         "installAgents": false
       },
       {
         "name": "sdlc",
-        "dir": "sdlc",
+        "dir": "plugins/sdlc",
         "installMcpServers": true,
         "installSkills": true,
         "installAgents": true
       }
     ]
   },
-  "servers": []
+  "servers": [
+    {
+      "name": "akamai-jira",
+      "plugin": "platform-common",
+      "command": "bash",
+      "args": [
+        "plugins/marketplace/plugins/platform-common/scripts/run-uv.sh",
+        "--directory",
+        "plugins/marketplace/plugins/platform-common/servers/jira-mcp",
+        "run",
+        "jira-mcp"
+      ]
+    },
+    {
+      "name": "akamai-bitbucket",
+      "plugin": "platform-common",
+      "command": "bash",
+      "args": [
+        "plugins/marketplace/plugins/platform-common/scripts/run-uv.sh",
+        "--directory",
+        "plugins/marketplace/plugins/platform-common/servers/bitbucket-mcp",
+        "run",
+        "bitbucket-mcp"
+      ]
+    },
+    {
+      "name": "akamai-confluence",
+      "plugin": "platform-common",
+      "command": "bash",
+      "args": [
+        "plugins/marketplace/plugins/platform-common/scripts/run-uv.sh",
+        "--directory",
+        "plugins/marketplace/plugins/platform-common/servers/confluence-mcp",
+        "run",
+        "confluence-mcp"
+      ]
+    },
+    {
+      "name": "webex-bot",
+      "plugin": "platform-common",
+      "command": "bash",
+      "args": [
+        "plugins/marketplace/plugins/platform-common/scripts/run-pnpm.sh",
+        "--dir",
+        "plugins/marketplace/plugins/platform-common/servers/webex-bot-mcp",
+        "start"
+      ],
+      "env": {
+        "WEBEX_BOT_URL": "${WEBEX_BOT_URL}"
+      }
+    },
+    {
+      "name": "sdlc-report",
+      "plugin": "sdlc",
+      "command": "bash",
+      "args": [
+        "plugins/marketplace/plugins/sdlc/scripts/run-uv.sh",
+        "--directory",
+        "plugins/marketplace/plugins/sdlc/servers/sdlc-report-mcp",
+        "run",
+        "sdlc-report-mcp"
+      ]
+    }
+  ]
 }
