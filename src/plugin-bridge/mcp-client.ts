@@ -61,6 +61,15 @@ export class McpStdioClient {
       for (const [, pend] of this.pending) pend.reject(new Error(`MCP[${name}] process exited`));
       this.pending.clear();
     });
+
+    // Without this, spawn errors (e.g. ENOENT) emit an unhandled 'error' event
+    // and crash the host process. The error is surfaced to callers via pending rejects.
+    this.proc.on('error', (err) => {
+      this.dead = true;
+      log.warn(`MCP server spawn error`, { server: name, err: err.message });
+      for (const [, pend] of this.pending) pend.reject(err);
+      this.pending.clear();
+    });
   }
 
   private send(method: string, params: unknown, timeoutMs = 15_000): Promise<unknown> {

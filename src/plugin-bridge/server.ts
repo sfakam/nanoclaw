@@ -92,7 +92,12 @@ export class PluginBridgeServer {
     const certsDir = resolvePath(this.config.bridge.certsDir || '~/.certs');
 
     for (const entry of this.config.servers) {
-      const commandPath = path.isAbsolute(entry.command) ? entry.command : path.join(this.projectRoot, entry.command);
+      // Bare command name (no path separator) → let the OS find it via PATH.
+      // Relative path (contains /) → resolve against projectRoot.
+      const commandPath =
+        path.isAbsolute(entry.command) || !entry.command.includes('/')
+          ? entry.command
+          : path.join(this.projectRoot, entry.command);
 
       // Resolve relative paths in args
       const args = entry.args.map((a) =>
