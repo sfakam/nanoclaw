@@ -23,6 +23,7 @@ interface WebexRoom {
   id: string;
   type: 'direct' | 'group';
   title: string;
+  lastActivity?: string; // ISO timestamp of most recent message
 }
 
 interface WebexMessage {
@@ -47,8 +48,10 @@ class WebexPollingAdapter implements ChannelAdapter {
   private _config: ChannelSetup | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private _connected = false;
-  /** roomId → ISO timestamp of last seen message */
+  /** roomId → ISO timestamp of last seen message (or last activity at seed time) */
   private lastSeenTime = new Map<string, string>();
+  /** roomId → lastActivity timestamp seen on the room list, used to skip unchanged rooms */
+  private lastActivityTime = new Map<string, string>();
   /** roomId → set of recently processed message IDs (dedup guard) */
   private processedIds = new Map<string, Set<string>>();
   /** rooms we've emitted metadata for */
@@ -106,11 +109,18 @@ class WebexPollingAdapter implements ChannelAdapter {
   private async poll(): Promise<void> {
     try {
       const { items: rooms } = await this.request<{ items: WebexRoom[] }>('/rooms?sortBy=lastactivity&max=100');
-      // Sequential with a small delay to stay within Webex rate limits
-      for (const room of rooms) {
+      // Only fetch messages for rooms whose lastActivity has advanced — skip the rest to stay within rate limits.
+      const activeRooms = rooms.filter((room) => {
+        const prev = this.lastActivityTime.get(room.id);
+        if (room.lastActivity) this.lastActivityTime.set(room.id, room.lastActivity);
+        // No previous record → seed on first poll (pollRoom will cursor-seed and return without routing)
+        if (!prev) return true;
+        return room.lastActivity ? room.lastActivity > prev : true;
+      });
+      for (const room of activeRooms) {
         if (!this._connected) break;
         await this.pollRoom(room);
-        await new Promise<void>((r) => setTimeout(r, ROOM_POLL_DELAY_MS));
+        if (activeRooms.length > 1) await new Promise<void>((r) => setTimeout(r, ROOM_POLL_DELAY_MS));
       }
     } catch (err) {
       log.warn('Webex poll error', { err });
