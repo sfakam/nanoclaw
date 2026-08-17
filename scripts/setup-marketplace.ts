@@ -169,7 +169,27 @@ function syncMarketplace(repoUrl: string): void {
 
 // ── step 3: install container skills from a plugin ───────────────────────────
 
-function installPluginSkills(pluginDir: string, pluginName: string): number {
+/**
+ * Rewrite $CLAUDE_PLUGIN_ROOT references in SKILL.md content to use the
+ * container-mounted marketplace paths (/marketplace/<pluginDir>/...).
+ *
+ * Three patterns handled:
+ *   1. $CLAUDE_PLUGIN_ROOT/../sibling  → /marketplace/sibling
+ *   2. os.environ["CLAUDE_PLUGIN_ROOT"] in Python snippets → "<containerRoot>"
+ *   3. $CLAUDE_PLUGIN_ROOT             → /marketplace/<pluginDir>
+ */
+function rewritePluginPaths(content: string, pluginRelDir: string): string {
+  const containerRoot = `/marketplace/${pluginRelDir}`;
+  // Cross-plugin: $CLAUDE_PLUGIN_ROOT/../sibling → /marketplace/sibling
+  content = content.replace(/\$CLAUDE_PLUGIN_ROOT\/\.\.\//g, '/marketplace/');
+  // Python os.environ lookup
+  content = content.replace(/os\.environ\["CLAUDE_PLUGIN_ROOT"\]/g, `"${containerRoot}"`);
+  // All remaining bare $CLAUDE_PLUGIN_ROOT
+  content = content.replace(/\$CLAUDE_PLUGIN_ROOT/g, containerRoot);
+  return content;
+}
+
+function installPluginSkills(pluginDir: string, pluginName: string, pluginRelDir: string): number {
   const skillsDir = path.join(pluginDir, 'skills');
   if (!fs.existsSync(skillsDir)) return 0;
 
@@ -184,10 +204,15 @@ function installPluginSkills(pluginDir: string, pluginName: string): number {
     fs.mkdirSync(destDir, { recursive: true });
 
     let content = fs.readFileSync(skillMd, 'utf-8');
+
+    // Rewrite host-side $CLAUDE_PLUGIN_ROOT paths to container /marketplace/... paths
+    content = rewritePluginPaths(content, pluginRelDir);
+
     // Prepend a note so the agent knows which MCP server to use
     const note = `<!-- Installed from marketplace plugin: ${pluginName}/${entry.name} -->\n` +
       `<!-- MCP tools are available via the nanoclaw-plugins MCP server. -->\n` +
-      `<!-- If a tool is shown as mcp__<server>__<tool>, use mcp__nanoclaw-plugins__<tool> instead. -->\n\n`;
+      `<!-- If a tool is shown as mcp__<server>__<tool>, use mcp__nanoclaw-plugins__<tool> instead. -->\n` +
+      `<!-- Marketplace scripts are available at /marketplace/${pluginRelDir}/ -->\n\n`;
     content = note + content;
 
     fs.writeFileSync(destMd, content);
@@ -315,7 +340,7 @@ async function main(): Promise<void> {
     console.log(`\n→ Processing plugin: ${plugin.name}`);
 
     if (plugin.installSkills !== false) {
-      const n = installPluginSkills(pluginDir, plugin.name);
+      const n = installPluginSkills(pluginDir, plugin.name, plugin.dir);
       if (n > 0) {
         console.log(`  ✓ ${n} skill(s) installed`);
         totalSkills += n;
