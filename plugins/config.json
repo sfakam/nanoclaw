@@ -1,0 +1,25 @@
+{
+  "bridge": {
+    "port": 13337,
+    "certsDir": "~/.certs"
+  },
+  "marketplace": {
+    "plugins": [
+      {
+        "name": "platform-common",
+        "dir": "platform-common",
+        "installMcpServers": true,
+        "installSkills": true,
+        "installAgents": false
+      },
+      {
+        "name": "sdlc",
+        "dir": "sdlc",
+        "installMcpServers": true,
+        "installSkills": true,
+        "installAgents": true
+      }
+    ]
+  },
+  "servers": []
+}

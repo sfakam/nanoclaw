@@ -21,3 +21,7 @@ import './interactive/index.js';
 import './permissions/index.js';
 import './agent-to-agent/index.js';
 import './self-mod/index.js';
+
+// Plugin bridge — starts only when plugins/config.json + servers[] are present.
+// Skill-installed: add-marketplace runs scripts/setup-marketplace.ts to populate.
+import '../plugin-bridge/index.js';

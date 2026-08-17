@@ -46,3 +46,7 @@ AGENTS.md
 docs/maintainer-guide.md
 docs/drafts/
 forks.md
+
+# Plugin marketplace — cloned at setup time, not committed
+# Run: pnpm exec tsx scripts/setup-marketplace.ts
+plugins/marketplace/
