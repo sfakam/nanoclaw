@@ -181,7 +181,18 @@ else
     echo "Building NanoClaw agent container image..."
     echo "Image: ${IMAGE_NAME}:${TAG}"
 
-    ${CONTAINER_RUNTIME} build "${BUILD_ARGS[@]}" -t "${IMAGE_NAME}:${TAG}" .
+    if [ -f "$SCRIPT_DIR/Dockerfile.fork" ]; then
+        # Fork extension present: build upstream image as -base, then layer fork on top.
+        ${CONTAINER_RUNTIME} build "${BUILD_ARGS[@]}" -t "${IMAGE_NAME}-base:${TAG}" .
+        echo "Applying fork extension (Dockerfile.fork)..."
+        ${CONTAINER_RUNTIME} build \
+            --build-arg "BASE_IMAGE=${IMAGE_NAME}-base:${TAG}" \
+            -f "$SCRIPT_DIR/Dockerfile.fork" \
+            -t "${IMAGE_NAME}:${TAG}" \
+            "$SCRIPT_DIR"
+    else
+        ${CONTAINER_RUNTIME} build "${BUILD_ARGS[@]}" -t "${IMAGE_NAME}:${TAG}" .
+    fi
 fi
 
 echo ""
