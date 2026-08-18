@@ -1,11 +1,11 @@
 # Anthropic Foundry Setup
 
-How to run NanoClaw agents against Akamai's internal Claude Foundry gateway instead of the public Anthropic API.
+How to run NanoClaw agents against your organization's Claude Foundry gateway instead of the public Anthropic API.
 
 ## Prerequisites
 
 - NanoClaw v2 with `DEFAULT_AGENT_PROVIDER=claude`
-- Access to the Akamai Foundry gateway and a valid subscription key
+- Access to your organization's Foundry gateway and a valid subscription key
 - `src/providers/index.ts` must contain `import './claude.js'` (present by default on Foundry installs)
 
 ## `.env` config
@@ -13,8 +13,8 @@ How to run NanoClaw agents against Akamai's internal Claude Foundry gateway inst
 Add these to `.env` in the NanoClaw root:
 
 ```env
-ANTHROPIC_BASE_URL=https://claude-llm.dash.akamai.com/apim/claude
-ANTHROPIC_FOUNDRY_BASE_URL=https://claude-llm.dash.akamai.com/apim/claude
+ANTHROPIC_BASE_URL=https://<your-foundry-gateway-url>/apim/claude
+ANTHROPIC_FOUNDRY_BASE_URL=https://<your-foundry-gateway-url>/apim/claude
 ANTHROPIC_FOUNDRY_API_KEY=<your-subscription-key>
 CLAUDE_CODE_USE_FOUNDRY=1
 ANTHROPIC_CUSTOM_HEADERS=user-id: <your-user-id>
@@ -24,7 +24,7 @@ ANTHROPIC_CUSTOM_HEADERS=user-id: <your-user-id>
 
 ## How it works
 
-`src/providers/claude.ts` reads the Foundry vars from `.env` and injects them into every agent container's environment at spawn time. It also sets `NO_PROXY=claude-llm.dash.akamai.com` so containers connect directly to the gateway — required because Foundry subscription key auth is handled natively by Claude Code, not by OneCLI's header injection.
+`src/providers/claude.ts` reads the Foundry vars from `.env` and injects them into every agent container's environment at spawn time. It also sets `NO_PROXY=<your-foundry-gateway-url>` so containers connect directly to the gateway — required because Foundry subscription key auth is handled natively by Claude Code, not by OneCLI's header injection.
 
 No iptables rules for Docker → OneCLI ports are needed.
 
@@ -52,7 +52,7 @@ If you see `API retry (retryable: true)` instead, check:
         -H "anthropic-version: 2023-06-01" \
         -H "content-type: application/json" \
         -d '{"model":"claude-sonnet-4-5","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}' \
-        https://claude-llm.dash.akamai.com/apim/claude/v1/messages
+        https://<your-foundry-gateway-url>/apim/claude/v1/messages
    ```
 2. `CLAUDE_CODE_USE_FOUNDRY=1` is set in `.env`
 3. The service was restarted after editing `.env`

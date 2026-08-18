@@ -1,6 +1,6 @@
-# PLX Fork — Setup Guide
+# Fork Setup Guide
 
-Step-by-step instructions for a new team member to get this fork running: nanoclaw with Webex, Telegram, Anthropic Foundry gateway, and PLXAgent (Jira + Confluence MCP via mTLS).
+Step-by-step instructions for a new team member to get this fork running: nanoclaw with Webex, Telegram, Anthropic Foundry gateway, and a dedicated agent (Jira + Confluence MCP via mTLS).
 
 ---
 
@@ -9,21 +9,21 @@ Step-by-step instructions for a new team member to get this fork running: nanocl
 Before starting, you need:
 
 - Linux or macOS machine with Docker available
-- Akamai mTLS certificates in `~/.certs/`:
-  - `akamai_ca_list.pem` — CA bundle
+- mTLS certificates in `~/.certs/`:
+  - `<company>_ca_list.pem` — CA bundle
   - `<username>-YYYYMMDD.crt` and `<username>-YYYYMMDD.key` — your current client cert/key pair  
-    (the `<username>.crt` / `<username>.key` symlinks point to the latest dated pair)
-- SSH access to `git.source.akamai.com` (for the marketplace repo)
+    (dated symlinks may point to the latest pair, but use the actual dated filename inside containers)
+- SSH access to the marketplace git server (for the plugin repo)
 - A Webex bot token ([developer.webex.com](https://developer.webex.com) → My Apps → Create a Bot)
 - A Telegram bot token ([@BotFather](https://t.me/BotFather) → `/newbot`)
-- Access to the Anthropic Foundry gateway (`claude-llm.dash.akamai.com`)
+- Access to your organization's Anthropic Foundry gateway
 
 ---
 
 ## Phase 1 — Clone and base setup
 
 ```bash
-git clone git@github.com:sfakam/nanoclaw.git nanoclaw-v2
+git clone git@github.com:<your-org>/nanoclaw.git nanoclaw-v2
 cd nanoclaw-v2
 bash nanoclaw.sh
 ```
@@ -37,11 +37,11 @@ The script installs Node, pnpm, and Docker if missing, sets up OneCLI (the crede
 After the wizard completes, edit `.env` in the project root. Add or update these values — do not commit this file:
 
 ```bash
-# Akamai Foundry gateway (replaces direct Anthropic API)
-ANTHROPIC_BASE_URL=https://claude-llm.dash.akamai.com/apim/claude
-ANTHROPIC_FOUNDRY_BASE_URL=https://claude-llm.dash.akamai.com/apim/claude
+# Foundry gateway (replaces direct Anthropic API)
+ANTHROPIC_BASE_URL=https://<your-foundry-gateway-url>/apim/claude
+ANTHROPIC_FOUNDRY_BASE_URL=https://<your-foundry-gateway-url>/apim/claude
 ANTHROPIC_FOUNDRY_API_KEY=<your-foundry-api-key>
-ANTHROPIC_CUSTOM_HEADERS=user-id: <your-akamai-username>_prod
+ANTHROPIC_CUSTOM_HEADERS=user-id: <your-username>_prod
 CLAUDE_CODE_USE_FOUNDRY=1
 
 # Telegram bot (from BotFather)
@@ -52,7 +52,7 @@ WEBEX_BOT_TOKEN=<your-webex-bot-token>
 WEBEX_POLL_INTERVAL_MS=30000
 
 # Marketplace repo
-PLUGIN_MARKETPLACE_REPO=ssh://git@git.source.akamai.com:7999/ns/infrasec-agentic-plugins.git
+PLUGIN_MARKETPLACE_REPO=ssh://git@<your-git-server>/<org>/plugins.git
 ```
 
 Then restart the service so Foundry config takes effect:
@@ -87,35 +87,35 @@ ncl wirings create \
 
 ---
 
-## Phase 4 — PLXAgent with Jira and Confluence MCP
+## Phase 4 — Dedicated agent with Jira and Confluence MCP
 
-PLXAgent is a dedicated agent group for the PLX team. It has access to the Jira and Confluence MCP servers (authenticated via your Akamai mTLS certificates) and the full marketplace skill set.
+This phase sets up a dedicated agent group with access to Jira and Confluence MCP servers (authenticated via your mTLS certificates) and the full marketplace skill set.
 
 ### 4a. Clone the marketplace repo
 
 ```bash
-git clone ssh://git@git.source.akamai.com:7999/ns/infrasec-agentic-plugins.git plugins/marketplace
+git clone ssh://git@<your-git-server>/<org>/plugins.git plugins/marketplace
 ```
 
-### 4b. Create the PLXAgent group
+### 4b. Create the agent group
 
 ```bash
-ncl groups create --folder plxagent --name "PLXAgent"
+ncl groups create --folder teamagent --name "TeamAgent"
 # Note the group ID printed (ag-XXXX) — you'll use it in later steps
-export PLXAGENT_ID=<ag-id-from-above>
+export AGENT_ID=<ag-id-from-above>
 ```
 
-Wire it to the PLX Webex room:
+Wire it to your Webex room:
 
 ```bash
 ncl messaging-groups create \
   --channel-type webex \
-  --platform-id "<plx-webex-room-id>" \
-  --name "PLX Team"
+  --platform-id "<webex-room-id>" \
+  --name "Team Room"
 
 ncl wirings create \
   --messaging-group-id <mg-id> \
-  --agent-group-id "$PLXAGENT_ID" \
+  --agent-group-id "$AGENT_ID" \
   --engage-mode mention
 ```
 
@@ -125,11 +125,11 @@ ncl wirings create \
 pnpm exec tsx scripts/setup-marketplace.ts
 ```
 
-This reads `plugins/config.json`, clones or pulls the marketplace repo, and writes `SKILL.md` files for 26 skills into `container/skills/mp-*/` with all paths rewritten to container-side locations.
+This reads `plugins/config.json`, clones or pulls the marketplace repo, and writes `SKILL.md` files for skills into `container/skills/mp-*/` with all paths rewritten to container-side locations.
 
 ### 4d. Allow `~/.certs` to be mounted into containers
 
-The Jira and Confluence MCP servers authenticate via mTLS — they need access to your Akamai client certificates inside the container.
+The Jira and Confluence MCP servers authenticate via mTLS — they need access to your client certificates inside the container.
 
 ```bash
 mkdir -p ~/.config/nanoclaw
@@ -139,7 +139,7 @@ cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
     {
       "path": "~/.certs",
       "allowReadWrite": false,
-      "description": "Akamai mTLS certificates for Jira/Confluence/Bitbucket MCP servers"
+      "description": "mTLS certificates for Jira/Confluence/Bitbucket MCP servers"
     }
   ],
   "blockedPatterns": [],
@@ -162,7 +162,7 @@ docker run --rm \
   -e HOME=/home/node \
   -e UV_PROJECT_ENVIRONMENT=/workspace/agent/.uv-envs \
   -e NO_PROXY='*' \
-  -v "$(pwd)/groups/plxagent:/workspace/agent" \
+  -v "$(pwd)/groups/teamagent:/workspace/agent" \
   -v "$(pwd)/plugins/marketplace:/marketplace:ro" \
   --entrypoint "" \
   "$IMAGE" \
@@ -179,27 +179,27 @@ You should see `jira-mcp` and `confluence-mcp` printed at the end.
 
 ### 4f. Find your current cert filename
 
-The symlinks `sfathall.crt` / `sfathall.key` in `~/.certs/` are absolute symlinks that break inside the container. Use the actual dated filename:
+Absolute symlinks in `~/.certs/` break inside the container. Use the actual dated filename:
 
 ```bash
 # List non-symlink certs — pick the newest one
 ls -la ~/.certs/*.crt | grep -v "^l" | awk '{print $NF}' | sort | tail -3
-# e.g. /home/yourname/.certs/yourname-20260505.crt
+# e.g. /home/<username>/.certs/<username>-20260505.crt
 ```
 
 Your cert file is named `<username>-<YYYYMMDD>.crt`. Note the date portion — you'll use it below.
 
 ### 4g. Configure the MCP servers
 
-Replace `<CERT_DATE>` with the date from your cert filename (e.g. `20260505`) and `<YOUR_USERNAME>` with your Akamai username:
+Replace `<CERT_DATE>` with the date from your cert filename (e.g. `20260505`) and `<YOUR_USERNAME>` with your username:
 
 ```bash
-# akamai-jira
-ncl groups config add-mcp-server --id "$PLXAGENT_ID" \
-  --name akamai-jira \
+# jira MCP server
+ncl groups config add-mcp-server --id "$AGENT_ID" \
+  --name jira \
   --command /workspace/agent/.uv-envs/bin/jira-mcp \
   --env "{
-    \"JIRA_CA_CERT\":\"/workspace/extra/.certs/akamai_ca_list.pem\",
+    \"JIRA_CA_CERT\":\"/workspace/extra/.certs/<company>_ca_list.pem\",
     \"JIRA_CLIENT_CERT\":\"/workspace/extra/.certs/<YOUR_USERNAME>-<CERT_DATE>.crt\",
     \"JIRA_CLIENT_KEY\":\"/workspace/extra/.certs/<YOUR_USERNAME>-<CERT_DATE>.key\",
     \"NO_PROXY\":\"*\",
@@ -208,12 +208,12 @@ ncl groups config add-mcp-server --id "$PLXAGENT_ID" \
     \"HTTP_PROXY\":\"\"
   }"
 
-# akamai-confluence
-ncl groups config add-mcp-server --id "$PLXAGENT_ID" \
-  --name akamai-confluence \
+# confluence MCP server
+ncl groups config add-mcp-server --id "$AGENT_ID" \
+  --name confluence \
   --command /workspace/agent/.uv-envs/bin/confluence-mcp \
   --env "{
-    \"CONFLUENCE_CA_CERT\":\"/workspace/extra/.certs/akamai_ca_list.pem\",
+    \"CONFLUENCE_CA_CERT\":\"/workspace/extra/.certs/<company>_ca_list.pem\",
     \"CONFLUENCE_CLIENT_CERT\":\"/workspace/extra/.certs/<YOUR_USERNAME>-<CERT_DATE>.crt\",
     \"CONFLUENCE_CLIENT_KEY\":\"/workspace/extra/.certs/<YOUR_USERNAME>-<CERT_DATE>.key\",
     \"NO_PROXY\":\"*\",
@@ -230,27 +230,27 @@ pnpm exec tsx scripts/q.ts data/v2.db \
   "UPDATE container_configs
    SET additional_mounts='[{\"hostPath\":\"~/.certs\",\"readonly\":true}]',
        updated_at='$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'
-   WHERE agent_group_id='$PLXAGENT_ID'"
+   WHERE agent_group_id='$AGENT_ID'"
 ```
 
-### 4h. Start PLXAgent
+### 4h. Start the agent
 
 ```bash
-ncl groups restart --id "$PLXAGENT_ID" \
+ncl groups restart --id "$AGENT_ID" \
   --message "Setup complete — Jira and Confluence MCP tools are available."
 ```
 
 Check it started cleanly:
 
 ```bash
-docker logs $(docker ps --filter "name=nanoclaw-v2-plxagent" --format "{{.Names}}" | head -1) 2>&1 | tail -10
+docker logs $(docker ps --filter "name=nanoclaw-v2-teamagent" --format "{{.Names}}" | head -1) 2>&1 | tail -10
 ```
 
 You should see lines like:
 
 ```
-[agent-runner] Additional MCP server: akamai-jira (/workspace/agent/.uv-envs/bin/jira-mcp)
-[agent-runner] Additional MCP server: akamai-confluence (/workspace/agent/.uv-envs/bin/confluence-mcp)
+[agent-runner] Additional MCP server: jira (/workspace/agent/.uv-envs/bin/jira-mcp)
+[agent-runner] Additional MCP server: confluence (/workspace/agent/.uv-envs/bin/confluence-mcp)
 ```
 
 with no "Wait for MCP server" lines — the servers start instantly from the pre-warmed venv.
@@ -259,7 +259,7 @@ with no "Wait for MCP server" lines — the servers start instantly from the pre
 
 ## Verification
 
-Mention PLXAgent in your wired Webex room and ask it to search Jira or list recent PLX tickets. If the MCP tools resolve, the setup is complete.
+Mention the agent in your wired Webex room and ask it to search Jira or list recent tickets. If the MCP tools resolve, the setup is complete.
 
 ---
 
@@ -267,12 +267,12 @@ Mention PLXAgent in your wired Webex room and ask it to search Jira or list rece
 
 ### Cert rotation (annual)
 
-When your Akamai cert rotates, a new `<username>-YYYYMMDD.crt/.key` pair appears in `~/.certs/`. Update both MCP server configs:
+When your cert rotates, a new `<username>-YYYYMMDD.crt/.key` pair appears in `~/.certs/`. Update both MCP server configs:
 
 ```bash
 # Remove old entries
-ncl groups config remove-mcp-server --id "$PLXAGENT_ID" --name akamai-jira
-ncl groups config remove-mcp-server --id "$PLXAGENT_ID" --name akamai-confluence
+ncl groups config remove-mcp-server --id "$AGENT_ID" --name jira
+ncl groups config remove-mcp-server --id "$AGENT_ID" --name confluence
 
 # Re-add with the new cert date (same commands as step 4g)
 ```
@@ -284,12 +284,12 @@ The pre-warmed venvs do not need to change — only the cert paths.
 ```bash
 cd plugins/marketplace && git pull && cd ../..
 pnpm exec tsx scripts/setup-marketplace.ts   # regenerates mp- SKILL.md files
-ncl groups restart --id "$PLXAGENT_ID"
+ncl groups restart --id "$AGENT_ID"
 ```
 
 ### Syncing from upstream nanoclaw
 
-This fork is 9 commits ahead of `origin/main` (upstream). To pull upstream updates:
+This fork tracks upstream `nanocoai/nanoclaw`. To pull upstream updates:
 
 ```bash
 git fetch origin
@@ -300,8 +300,6 @@ pnpm install
 ./container/build.sh
 systemctl --user restart nanoclaw
 ```
-
-See [docs/plx-fork-delta.md](plx-fork-delta.md) for a full description of what this fork adds vs upstream.
 
 ---
 

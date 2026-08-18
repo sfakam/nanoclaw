@@ -23,7 +23,7 @@
   },
   "servers": [
     {
-      "name": "akamai-jira",
+      "name": "jira",
       "plugin": "platform-common",
       "command": "bash",
       "args": [
@@ -35,7 +35,7 @@
       ]
     },
     {
-      "name": "akamai-bitbucket",
+      "name": "bitbucket",
       "plugin": "platform-common",
       "command": "bash",
       "args": [
@@ -47,7 +47,7 @@
       ]
     },
     {
-      "name": "akamai-confluence",
+      "name": "confluence",
       "plugin": "platform-common",
       "command": "bash",
       "args": [

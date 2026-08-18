@@ -1,7 +1,7 @@
 /**
  * setup-marketplace.ts
  *
- * One-time (and repeatable) setup for the Akamai plugin marketplace.
+ * One-time (and repeatable) setup for the plugin marketplace.
  * Run after cloning the Nanoclaw fork:
  *
  *   pnpm exec tsx scripts/setup-marketplace.ts
@@ -134,7 +134,7 @@ async function ensureRepoUrl(): Promise<string> {
   if (!repoUrl) {
     console.log('\n─── Plugin Marketplace Setup ───────────────────────────────');
     console.log('Enter the git URL for the plugin marketplace repo.');
-    console.log('Example: ssh://git@git.source.akamai.com:7999/ns/infrasec-agentic-plugins.git\n');
+    console.log('Example: ssh://git@<your-git-server>/<org>/plugins.git\n');
     repoUrl = await prompt('Marketplace repo URL: ');
     if (!repoUrl) {
       console.error('No URL provided. Aborting.');
