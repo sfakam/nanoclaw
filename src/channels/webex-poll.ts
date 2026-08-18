@@ -34,7 +34,9 @@ import type {
 } from './adapter.js';
 
 const WEBEX_API = 'https://webexapis.com/v1';
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 5000;
+const RATE_LIMIT_BASE_SECS = 10;
+const RATE_LIMIT_MAX_RETRIES = 4;
 
 interface WebexRoom {
   id: string;
@@ -86,12 +88,25 @@ registerChannelAdapter('webex-poll', {
     // Per-room: lastActivity from Webex — skip the room on poll if unchanged
     const roomActivity = new Map<string, string>();
 
-    async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    async function apiFetch<T>(path: string, init?: RequestInit, attempt = 0): Promise<T> {
       const url = path.startsWith('http') ? path : `${WEBEX_API}${path}`;
       const res = await fetch(url, {
         ...init,
         headers: { ...authHeaders, ...((init?.headers as Record<string, string> | undefined) ?? {}) },
       });
+
+      if (res.status === 429) {
+        if (attempt >= RATE_LIMIT_MAX_RETRIES) {
+          throw new Error(`Webex API ${path} → 429: rate limited after ${attempt} retries`);
+        }
+        // Respect Retry-After, then double on each successive retry.
+        const retryAfterSecs = parseInt(res.headers.get('Retry-After') ?? String(RATE_LIMIT_BASE_SECS), 10);
+        const delaySecs = retryAfterSecs * Math.pow(2, attempt);
+        log.warn('webex-poll: rate limited', { path, attempt, delaySecs });
+        await new Promise((r) => setTimeout(r, delaySecs * 1000));
+        return apiFetch<T>(path, init, attempt + 1);
+      }
+
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new Error(`Webex API ${path} → ${res.status}: ${body.slice(0, 200)}`);
