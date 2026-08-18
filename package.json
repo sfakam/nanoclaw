@@ -27,7 +27,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@bitbasti/chat-adapter-webex": "0.1.0",
     "@chat-adapter/telegram": "4.29.0",
     "@clack/core": "^1.2.0",
     "@clack/prompts": "^1.2.0",

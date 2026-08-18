@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@bitbasti/chat-adapter-webex':
-        specifier: 0.1.0
-        version: 0.1.0(chat@4.29.0)
       '@chat-adapter/telegram':
         specifier: 4.29.0
         version: 4.29.0
@@ -77,11 +74,6 @@ importers:
         version: 4.1.4(@types/node@22.19.17)(vite@8.0.8(@types/node@22.19.17)(esbuild@0.27.7)(tsx@4.21.0)(yaml@2.9.0))
 
 packages:
-
-  '@bitbasti/chat-adapter-webex@0.1.0':
-    resolution: {integrity: sha512-Cl/gy3ifh18y0fs4f/qVNmHXfn+3v40x6QUjOUGZ5mEds2zYiqeVAalRkL+feBdjEz1tE8aQtzf1OUhRGPQeFw==}
-    peerDependencies:
-      chat: ^4.15.0
 
   '@chat-adapter/shared@4.29.0':
     resolution: {integrity: sha512-ARqTDoHJHKN9rpytbFPJbNmqqx3fOg5xwsTZdlingQPAssOSeHDBdqrFJkgDhyCRGbmDtG09cuS0FkVzeoh2qg==}
@@ -1528,15 +1520,6 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
-
-  '@bitbasti/chat-adapter-webex@0.1.0(chat@4.29.0)':
-    dependencies:
-      '@chat-adapter/shared': 4.29.0
-      chat: 4.29.0
-    transitivePeerDependencies:
-      - ai
-      - supports-color
-      - zod
 
   '@chat-adapter/shared@4.29.0':
     dependencies:
