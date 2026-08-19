@@ -26,6 +26,7 @@ import { enforceUpgradeTripwire } from './upgrade-state.js';
 import { getResponseHandlers, type ResponsePayload } from './response-registry.js';
 
 const hostAbortController = new AbortController();
+let centralDb: import('better-sqlite3').Database | null = null;
 
 async function dispatchResponse(payload: ResponsePayload): Promise<void> {
   for (const handler of getResponseHandlers()) {
@@ -59,6 +60,7 @@ import {
   teardownChannelAdapters,
   createChannelDeliveryAdapter,
 } from './channels/channel-registry.js';
+import { getMessagingGroupWithAgentCount } from './db/messaging-groups.js';
 
 async function main(): Promise<void> {
   log.info('NanoClaw starting');
@@ -72,7 +74,8 @@ async function main(): Promise<void> {
 
   // 1. Init central DB
   const dbPath = path.join(DATA_DIR, 'v2.db');
-  const db = initDb(dbPath);
+  centralDb = initDb(dbPath);
+  const db = centralDb;
   runMigrations(db);
   log.info('Central DB ready', { path: dbPath });
 
@@ -123,6 +126,14 @@ async function main(): Promise<void> {
           name,
           isGroup,
         });
+      },
+      isWired(platformId) {
+        const mg = getMessagingGroupWithAgentCount(
+          adapter.channelType,
+          platformId,
+          adapter.instance ?? adapter.channelType,
+        );
+        return mg !== null && mg.agentCount > 0;
       },
       onAction(questionId, selectedOption, userId) {
         dispatchResponse({
@@ -182,12 +193,27 @@ async function shutdown(signal: string): Promise<void> {
     // via SIGTERM/SIGINT, not a crash, so the next start shouldn't be counted
     // as one.
     resetCircuitBreaker();
+    // Close the central DB explicitly so better-sqlite3 Statement destructors
+    // run while the Node environment is still live (prevents the
+    // RemoveEnvironmentCleanupHook assertion on process exit).
+    try { centralDb?.close(); } catch { /* ignore */ }
+    centralDb = null;
     process.exit(0);
   }
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  log.fatal('Unhandled promise rejection — shutting down', { reason });
+  void shutdown('unhandledRejection');
+});
+
+process.on('uncaughtException', (err) => {
+  log.fatal('Uncaught exception — shutting down', { err });
+  void shutdown('uncaughtException');
+});
 
 main().catch((err) => {
   log.fatal('Startup failed', { err });
