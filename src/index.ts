@@ -196,7 +196,11 @@ async function shutdown(signal: string): Promise<void> {
     // Close the central DB explicitly so better-sqlite3 Statement destructors
     // run while the Node environment is still live (prevents the
     // RemoveEnvironmentCleanupHook assertion on process exit).
-    try { centralDb?.close(); } catch { /* ignore */ }
+    try {
+      centralDb?.close();
+    } catch {
+      /* ignore */
+    }
     centralDb = null;
     process.exit(0);
   }
