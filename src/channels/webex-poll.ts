@@ -172,12 +172,23 @@ registerChannelAdapter('webex-poll', {
         const { items: rooms } = await apiFetch<{ items: WebexRoom[] }>('/rooms?sortBy=lastactivity&max=100');
 
         for (const room of rooms) {
+          const platformId = `webex-poll:${room.id}`;
+
+          // Only fetch messages for rooms wired to an agent group.
+          if (setupConfig.isWired && !setupConfig.isWired(platformId)) continue;
+
           const prev = roomActivity.get(room.id);
           if (prev === room.lastActivity) continue;
 
           try {
             await pollRoom(room);
           } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('→ 403')) {
+              // Bot lost access to this room — skip it permanently this session.
+              roomActivity.set(room.id, room.lastActivity);
+              continue;
+            }
             log.warn('webex-poll: pollRoom error', { roomId: room.id, err });
           }
 

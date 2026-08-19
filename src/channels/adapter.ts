@@ -21,6 +21,13 @@ export interface ChannelSetup {
   /** Called when the adapter discovers metadata about a conversation. */
   onMetadata(platformId: string, name?: string, isGroup?: boolean): void;
 
+  /**
+   * Optional filter for polling adapters. Returns true if the adapter should
+   * fetch messages for this platformId (i.e. the room is wired to an agent).
+   * When absent, all rooms are polled (default / open behaviour).
+   */
+  isWired?(platformId: string): boolean;
+
   /** Called when a user clicks a button/action in a card (e.g., ask_user_question response). */
   onAction(questionId: string, selectedOption: string, userId: string): void;
 }
