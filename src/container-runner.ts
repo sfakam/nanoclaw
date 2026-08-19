@@ -404,6 +404,11 @@ export function buildMounts(
  * Sync skill symlinks in .claude-shared/skills/ to match the container.json
  * selection. Each symlink points to a container path (/app/skills/<name>)
  * so it's dangling on the host but valid inside the container.
+ *
+ * Also discovers skills from the plugin marketplace
+ * (plugins/marketplace/plugins/<plugin>/skills/<name>/) and symlinks them to
+ * their container paths (/marketplace/plugins/<plugin>/skills/<name>).
+ * Container skills take priority over marketplace skills on name collision.
  */
 function syncSkillSymlinks(claudeDir: string, containerConfig: import('./container-config.js').ContainerConfig): void {
   const skillsDir = path.join(claudeDir, 'skills');
@@ -414,6 +419,32 @@ function syncSkillSymlinks(claudeDir: string, containerConfig: import('./contain
   const desired = selectedSkillNames(containerConfig);
   const desiredSet = new Set(desired);
 
+  // Discover marketplace skills: plugins/marketplace/plugins/<plugin>/skills/<name>/
+  // Maps skill name -> container path. Container skills take priority on collision.
+  const marketplaceSkills = new Map<string, string>();
+  const marketplaceDir = path.join(process.cwd(), 'plugins', 'marketplace');
+  if (fs.existsSync(marketplaceDir)) {
+    const pluginsDir = path.join(marketplaceDir, 'plugins');
+    if (fs.existsSync(pluginsDir)) {
+      for (const plugin of fs.readdirSync(pluginsDir)) {
+        const skillsSrcDir = path.join(pluginsDir, plugin, 'skills');
+        if (!fs.existsSync(skillsSrcDir)) continue;
+        for (const skill of fs.readdirSync(skillsSrcDir)) {
+          try {
+            if (!fs.statSync(path.join(skillsSrcDir, skill)).isDirectory()) continue;
+          } catch {
+            continue;
+          }
+          if (!desiredSet.has(skill)) {
+            marketplaceSkills.set(skill, `/marketplace/plugins/${plugin}/skills/${skill}`);
+          }
+        }
+      }
+    }
+  }
+
+  const allDesiredSet = new Set([...desiredSet, ...marketplaceSkills.keys()]);
+
   // Remove symlinks not in the desired set
   for (const entry of fs.readdirSync(skillsDir)) {
     const entryPath = path.join(skillsDir, entry);
@@ -423,12 +454,12 @@ function syncSkillSymlinks(claudeDir: string, containerConfig: import('./contain
     } catch {
       continue;
     }
-    if (isSymlink && !desiredSet.has(entry)) {
+    if (isSymlink && !allDesiredSet.has(entry)) {
       fs.unlinkSync(entryPath);
     }
   }
 
-  // Create symlinks for desired skills (container path targets)
+  // Create symlinks for desired container skills (container path targets)
   for (const skill of desired) {
     const linkPath = path.join(skillsDir, skill);
     let entry: fs.Stats | undefined;
@@ -451,6 +482,22 @@ function syncSkillSymlinks(claudeDir: string, containerConfig: import('./contain
           path: linkPath,
         },
       );
+    }
+  }
+
+  // Create symlinks for marketplace skills
+  for (const [skill, containerPath] of marketplaceSkills) {
+    const linkPath = path.join(skillsDir, skill);
+    let entry: fs.Stats | undefined;
+    try {
+      entry = fs.lstatSync(linkPath);
+    } catch {
+      /* missing */
+    }
+    if (!entry) {
+      fs.symlinkSync(containerPath, linkPath);
+    } else if (!entry.isSymbolicLink()) {
+      log.warn('Marketplace skill not symlinked: real entry occupies the path', { skill, path: linkPath });
     }
   }
 }
