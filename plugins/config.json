@@ -59,20 +59,6 @@
       ]
     },
     {
-      "name": "webex-bot",
-      "plugin": "platform-common",
-      "command": "bash",
-      "args": [
-        "plugins/marketplace/plugins/platform-common/scripts/run-pnpm.sh",
-        "--dir",
-        "plugins/marketplace/plugins/platform-common/servers/webex-bot-mcp",
-        "start"
-      ],
-      "env": {
-        "WEBEX_BOT_URL": "${WEBEX_BOT_URL}"
-      }
-    },
-    {
       "name": "sdlc-report",
       "plugin": "sdlc",
       "command": "bash",

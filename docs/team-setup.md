@@ -150,7 +150,7 @@ EOF
 
 ### 4e. Pre-warm the Python venvs
 
-The MCP servers (`jira-mcp`, `confluence-mcp`) are Python packages that must be compiled from source on first run — this takes ~2 minutes. Pre-warming runs this once so containers start instantly.
+The MCP servers (`jira-mcp`, `confluence-mcp`, `bitbucket-mcp`) are Python packages that must be compiled from source on first run — this takes ~2 minutes. Pre-warming runs this once so containers start instantly.
 
 ```bash
 # The image tag is in the format nanoclaw-agent-v2-<hash>:latest
@@ -171,11 +171,13 @@ docker run --rm \
     uv run --directory /marketplace/plugins/platform-common/servers/jira-mcp jira-mcp --help > /dev/null 2>&1 || true
     echo "Warming confluence-mcp..."
     uv run --directory /marketplace/plugins/platform-common/servers/confluence-mcp confluence-mcp --help > /dev/null 2>&1 || true
-    echo "Done: $(ls /workspace/agent/.uv-envs/bin/ | grep -E "^jira|^confluence")"
+    echo "Warming bitbucket-mcp..."
+    uv run --directory /marketplace/plugins/platform-common/servers/bitbucket-mcp bitbucket-mcp --help > /dev/null 2>&1 || true
+    echo "Done: $(ls /workspace/agent/.uv-envs/bin/ | grep -E "^jira|^confluence|^bitbucket")"
   '
 ```
 
-You should see `jira-mcp` and `confluence-mcp` printed at the end.
+You should see `jira-mcp`, `confluence-mcp`, and `bitbucket-mcp` printed at the end.
 
 ### 4f. Find your current cert filename
 
@@ -221,6 +223,20 @@ ncl groups config add-mcp-server --id "$AGENT_ID" \
     \"HTTPS_PROXY\":\"\",
     \"HTTP_PROXY\":\"\"
   }"
+
+# bitbucket MCP server
+ncl groups config add-mcp-server --id "$AGENT_ID" \
+  --name akamai-bitbucket \
+  --command /workspace/agent/.uv-envs/bin/bitbucket-mcp \
+  --env "{
+    \"BITBUCKET_CA_CERT\":\"/workspace/extra/.certs/<company>_ca_list.pem\",
+    \"BITBUCKET_CLIENT_CERT\":\"/workspace/extra/.certs/<YOUR_USERNAME>-<CERT_DATE>.crt\",
+    \"BITBUCKET_CLIENT_KEY\":\"/workspace/extra/.certs/<YOUR_USERNAME>-<CERT_DATE>.key\",
+    \"NO_PROXY\":\"*\",
+    \"no_proxy\":\"*\",
+    \"HTTPS_PROXY\":\"\",
+    \"HTTP_PROXY\":\"\"
+  }"
 ```
 
 Add the certs directory as a container mount:
@@ -237,7 +253,7 @@ pnpm exec tsx scripts/q.ts data/v2.db \
 
 ```bash
 ncl groups restart --id "$AGENT_ID" \
-  --message "Setup complete — Jira and Confluence MCP tools are available."
+  --message "Setup complete — Jira, Confluence, and Bitbucket MCP tools are available."
 ```
 
 Check it started cleanly:
@@ -251,6 +267,7 @@ You should see lines like:
 ```
 [agent-runner] Additional MCP server: jira (/workspace/agent/.uv-envs/bin/jira-mcp)
 [agent-runner] Additional MCP server: confluence (/workspace/agent/.uv-envs/bin/confluence-mcp)
+[agent-runner] Additional MCP server: akamai-bitbucket (/workspace/agent/.uv-envs/bin/bitbucket-mcp)
 ```
 
 with no "Wait for MCP server" lines — the servers start instantly from the pre-warmed venv.
@@ -311,5 +328,5 @@ systemctl --user restart nanoclaw
 | `Missing certificate files` in MCP server logs | You used a symlink path — use the dated filename (step 4f) |
 | Jira/Confluence calls time out | The container HTTP proxy is intercepting mTLS traffic — `NO_PROXY=*` must be set (step 4g) |
 | `nanoclaw-plugins` MCP server fails to start | UFW blocks Docker→host on port 13337 — this is expected; the plugin bridge is not used, MCP servers run directly |
-| Host process crashes with `better-sqlite3` assertion | Pre-existing upstream bug on process exit; nanoclaw auto-restarts via systemd |
+| Host process crashes with `better-sqlite3` assertion (`(env) != nullptr`) | Node v24 incompatibility fixed by upgrading to `better-sqlite3@13.0.3` — run `pnpm add better-sqlite3@13.0.3 && pnpm run build && systemctl --user restart nanoclaw` |
 | Webex room not receiving replies | Check `WEBEX_BOT_TOKEN` is set and the bot is a member of the room |

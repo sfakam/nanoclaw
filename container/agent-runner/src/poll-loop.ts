@@ -377,9 +377,6 @@ export async function processQuery(
   let queryContinuation: string | undefined;
   let done = false;
   let unwrappedNudged = false;
-  // Capture seq watermark so dispatchResultText can skip <message> blocks
-  // whose content was already sent via the send_message MCP tool this turn.
-  const turnStartSeq = (getOutboundDb().prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM messages_out').get() as { s: number }).s;
   // Once-per-turn guard for the task-run "<message> block was not delivered"
   // nudge — mirrors unwrappedNudged for chat turns.
   let taskBlockNudged = false;
